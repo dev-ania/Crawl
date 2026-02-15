@@ -1,131 +1,138 @@
+// File: BooksCrawler.Services/BookCrawlerService.cs
+
 using System.Net.Http;
-using BooksCrawler.Configuration;
-using BooksCrawler.Domain;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using BooksCrawler.Models;
 
 namespace BooksCrawler.Services;
 
-public sealed class BookCrawlerService(
-    HttpClient httpClient,
-    HtmlBookParser parser,
-    DuplicateDetector duplicateDetector,
-    IOptions<AppOptions> options,
-    ILogger<BookCrawlerService> logger)
+public class BookCrawlerService
 {
-    private readonly CrawlerOptions _config = options.Value.Crawler;
+    private const string BaseUrl = "https://www.taniaksiazka.pl";
 
-    // Metoda pomocnicza do bezpiecznego pobierania HTML (omija błąd "Invalid character set")
-    private async Task<string> DownloadHtmlAsync(string url)
+    private readonly HttpClient _httpClient;
+    private readonly HtmlBookParser _parser;
+    private readonly DuplicateDetector _duplicateDetector;
+    private readonly ILogger<BookCrawlerService> _logger;
+
+    public BookCrawlerService(
+        HttpClient httpClient,
+        HtmlBookParser parser,
+        DuplicateDetector duplicateDetector,
+        ILogger<BookCrawlerService> logger)
     {
-        try
-        {
-            // Pobieramy jako bajty, a nie string, żeby ominąć walidację nagłówka Content-Type
-            var bytes = await httpClient.GetByteArrayAsync(url);
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-            // Dekodujemy ręcznie jako UTF-8 (dla TaniaKsiazka.pl to działa poprawnie)
-            return Encoding.UTF8.GetString(bytes);
-        }
-        catch (HttpRequestException ex)
-        {
-            // Logujemy błąd HTTP (np. 404, 500)
-            logger.LogWarning("Błąd HTTP przy pobieraniu {Url}: {Message}", url, ex.Message);
-            throw;
-        }
+        _httpClient = httpClient;
+        _parser = parser;
+        _duplicateDetector = duplicateDetector;
+        _logger = logger;
+
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
     }
 
-    public async Task<List<Book>> RunCrawlAsync(string seedUrl, int maxPages, Action<string> logCallback)
+    // Zwraca Tuple (List<Book>, CrawlStats)
+    public async Task<(List<Book> Books, CrawlStats Stats)> RunCrawlAsync(
+        string seedUrl,
+        int maxPages,
+        Action<string>? logCallback)
     {
-        List<Book> books = [];
+        var books = new List<Book>();
+        var queue = new Queue<string>();
+        queue.Enqueue(seedUrl);
 
-        // Nagłówki - udajemy zwykłą przeglądarkę
-        httpClient.DefaultRequestHeaders.Clear();
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7");
+        var stats = new CrawlStats();
+        int pageCount = 0;
 
-        for (int page = 1; page <= maxPages; page++)
+        while (queue.Count > 0 && pageCount < maxPages)
         {
-            // Logika paginacji dla TaniaKsiazka.pl:
-            // Strona 1: .../szukaj?q=fraza
-            // Strona 2: .../szukaj?q=fraza&page=2
+            var currentUrl = queue.Dequeue();
+            pageCount++;
+            stats.PagesProcessed++;
 
-            string currentUrl;
-            if (page == 1)
-            {
-                currentUrl = seedUrl;
-            }
-            else
-            {
-                // Jeśli URL ma już parametry (?), dodajemy &page=, w przeciwnym razie ?page=
-                var separator = seedUrl.Contains("?") ? "&page=" : "?page=";
-                currentUrl = $"{seedUrl}{separator}{page}";
-            }
-
-            logCallback($"Pobieranie strony {page}: {currentUrl}");
+            logCallback?.Invoke($"Przetwarzanie strony listy {pageCount}/{maxPages}: {currentUrl}");
 
             try
             {
-                // Używamy bezpiecznej metody pobierania
-                var listHtml = await DownloadHtmlAsync(currentUrl);
+                var html = await _httpClient.GetStringAsync(currentUrl);
 
-                // Wyciągamy linki
-                var links = parser.ExtractBookLinks(listHtml, currentUrl);
+                // 1) POZIOM LISTY
+                var booksFromList = _parser.ParseBooksFromList(html, BaseUrl);
+                stats.TotalFound += booksFromList.Count;
 
-                if (links.Count == 0)
+                logCallback?.Invoke($"Znaleziono {booksFromList.Count} wstępnych wyników.");
+
+                // 2) POZIOM SZCZEGÓŁÓW
+                foreach (var book in booksFromList)
                 {
-                    logCallback("  (Brak wyników na tej stronie)");
-                    // Jeśli brak wyników na pierwszej stronie, to nie ma sensu iść dalej
-                    if (page == 1) break;
-                    else continue;
-                }
-
-                logCallback($"  Znaleziono {links.Count} linków.");
-
-                foreach (var link in links)
-                {
-                    // Pomijamy duplikaty
-                    if (duplicateDetector.IsDuplicate(link)) continue;
-
-                    // Opóźnienie (Rate Limiting)
-                    await Task.Delay(_config.RequestDelayMs);
+                    if (_duplicateDetector.IsDuplicate(book.Url))
+                    {
+                        stats.DuplicatesRejected++;
+                        logCallback?.Invoke($" Pominięto duplikat: {book.Title}");
+                        continue;
+                    }
 
                     try
                     {
-                        // Pobieramy szczegóły książki
-                        var bookHtml = await DownloadHtmlAsync(link);
-                        var book = parser.ParseBookDetails(bookHtml, link);
-
-                        if (book != null)
-                        {
-                            books.Add(book);
-                            logCallback($"  -> OK: {book.Title} ({book.Price} PLN)");
-                        }
-                        else
-                        {
-                            logCallback($"  ! Nie udało się sparsować: {link}");
-                        }
+                        var detailHtml = await _httpClient.GetStringAsync(book.Url);
+                        _parser.EnrichBookDetails(book, detailHtml);
+                        await Task.Delay(300);
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "Błąd szczegółów: {Url}", link);
-                        logCallback($"  ! Błąd przy książce: {ex.Message}");
+                        _logger.LogWarning(ex,
+                            "Błąd pobierania szczegółów dla {Url}. Zachowano dane z listy.",
+                            book.Url);
+                    }
+
+                    bool hasInvalidAuthor =
+                        book.Authors == null || book.Authors.Count == 0 ||
+                        book.Authors.Any(a =>
+                            string.IsNullOrWhiteSpace(a) ||
+                            a.Contains("Nieznany", StringComparison.OrdinalIgnoreCase) ||
+                            a.Contains("Unknown", StringComparison.OrdinalIgnoreCase));
+
+                    if (hasInvalidAuthor)
+                    {
+                        stats.MissingAuthorRejected++; // <-- CHANGE THIS!
+                        logCallback?.Invoke($" Pominięto pozycję (brak autora): {book.Title}");
+                        _logger.LogInformation(
+                            "Odrzucono: '{Title}' - brak autora lub autor nieznany - pozycja nieksiążkowa.",
+                            book.Title);
+                        continue;
+                    }
+
+                    books.Add(book);
+                    stats.UniqueAdded++;
+                }
+
+                // 3) PAGINACJA
+                if (pageCount < maxPages)
+                {
+                    var nextPageLink = _parser.ParseNextPageLink(html, BaseUrl);
+                    if (!string.IsNullOrEmpty(nextPageLink) &&
+                        !currentUrl.Equals(nextPageLink, StringComparison.OrdinalIgnoreCase))
+                    {
+                        queue.Enqueue(nextPageLink);
+                        logCallback?.Invoke("Dodano kolejną stronę wyników do kolejki.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Błąd listy stron: {Url}", currentUrl);
-                logCallback($"  ! Błąd pobierania strony {page}: {ex.Message}");
-                // Jeśli padła lista, przerywamy pętlę
-                break;
+                logCallback?.Invoke($"Błąd pobierania strony listy: {ex.Message}");
+                _logger.LogError(ex, "Błąd crawlowania strony listy: {Url}", currentUrl);
             }
 
-            // Opóźnienie między stronami listy
-            await Task.Delay(_config.RequestDelayMs);
+            await Task.Delay(1000);
         }
 
-        return books;
+        logCallback?.Invoke(
+            $"Podsumowanie: znaleziono {stats.TotalFound} pozycji, dodano: {stats.UniqueAdded}, " +
+            $"odrzucono duplikaty: {stats.DuplicatesRejected}, odrzucono (brak autora): {stats.MissingAuthorRejected}"); // <-- CHANGE THIS!
+
+        return (books, stats);
     }
 }

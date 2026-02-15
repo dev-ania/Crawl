@@ -3,82 +3,124 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:BooksCrawler"
         xmlns:vm="clr-namespace:BooksCrawler.ViewModels"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         mc:Ignorable="d"
-        Title="Books Crawler - .NET 10" Height="450" Width="600"
-        WindowStartupLocation="CenterScreen">
-    
-    <!-- Prosty styl dla kontrolek -->
+        x:Name="MainWindowRoot"
+        Title="Crawler Książek" Height="700" Width="900">
+
     <Window.Resources>
-        <Style TargetType="TextBlock">
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="0,0,10,0"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Padding" Value="5"/>
-            <Setter Property="Margin" Value="0,5"/>
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="Margin" Value="0,10"/>
-        </Style>
+        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
     </Window.Resources>
 
-    <Grid Margin="20">
+    <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/> <!-- Nagłówek -->
-            <RowDefinition Height="Auto"/> <!-- Formularz -->
-            <RowDefinition Height="*"/>    <!-- Logi -->
-            <RowDefinition Height="Auto"/> <!-- Przycisk -->
+            <RowDefinition Height="Auto"/> <!-- Crawler -->
+            <RowDefinition Height="Auto"/> <!-- Separator -->
+            <RowDefinition Height="Auto"/> <!-- Analiza UI -->
+            <RowDefinition Height="*"/>    <!-- Tabela Wyników -->
+            <RowDefinition Height="Auto"/> <!-- Raport -->
+            <RowDefinition Height="150"/>  <!-- Logi -->
         </Grid.RowDefinitions>
 
-        <!-- 1. Nagłówek -->
-        <TextBlock Text="Konfiguracja Crawlera" 
-                   FontSize="20" FontWeight="Bold" 
-                   Foreground="#333" Margin="0,0,0,15"/>
+        <!-- 1. CRAWLER SECTION -->
+        <GroupBox Header="Pobieranie danych" Grid.Row="0" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="150"/>
+                </Grid.ColumnDefinitions>
+                
+                <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
+                         ToolTip="Wpisz frazę np. python" VerticalContentAlignment="Center" Margin="0,0,10,0"/>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Stron:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <TextBox Text="{Binding MaxPages}" Width="40" TextAlignment="Center"/>
+                </StackPanel>
 
-        <!-- 2. Formularz -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+                <Button Grid.Column="2" Content="Szukaj" Command="{Binding StartCrawlCommand}" 
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                        Height="30"/>
+            </Grid>
+        </GroupBox>
 
-            <!-- Base URL (np. Helion) -->
-            <TextBlock Text="Księgarnia:" Grid.Row="0" Grid.Column="0"/>
-            <TextBox Text="https://helion.pl/search?qa=" IsReadOnly="True" Grid.Row="0" Grid.Column="1" Background="#F0F0F0"/>
+        <Separator Grid.Row="1" Margin="0,10"/>
 
-            <!-- Fraza (np. Python) -->
-            <TextBlock Text="Szukaj (Autor/Tytuł):" Grid.Row="1" Grid.Column="0"/>
-            <TextBox Text="{Binding SearchQuery}" Grid.Row="1" Grid.Column="1"/>
+        <!-- 2. ANALIZA UI -->
+        <GroupBox Header="Analiza" Grid.Row="2" Padding="10">
+            <StackPanel>
+                <!-- Wybór analizy -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Wybierz analizę:" VerticalAlignment="Center" Margin="0,0,10,0" Width="120"/>
+                    
+                    <ComboBox ItemsSource="{Binding AvailableAnalyses}" 
+                              SelectedItem="{Binding SelectedAnalysis}" 
+                              Width="250" Margin="0,0,10,0"/>
+                    
+                    <Button Content="Pokaż wyniki" Command="{Binding RunAnalysisCommand}" 
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                            Padding="10,5"/>
+                </StackPanel>
+                
+                <!-- DYNAMICZNE POLE PARAMETRU -->
+                <StackPanel Orientation="Horizontal" 
+                            Visibility="{Binding ShowParameterInput, Converter={StaticResource BoolToVisConverter}}">
+                    <TextBlock Text="{Binding ParameterLabel}" 
+                               VerticalAlignment="Center" 
+                               Margin="0,0,10,0" 
+                               Width="120"
+                               FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding AnalysisParameter, UpdateSourceTrigger=PropertyChanged}" 
+                             Width="80" 
+                             TextAlignment="Center" 
+                             VerticalContentAlignment="Center"
+                             ToolTip="Wprowadź wartość parametru"/>
+                    <TextBlock Text="{Binding ParameterHint}" 
+                               VerticalAlignment="Center" 
+                               Margin="10,0,0,0" 
+                               FontStyle="Italic"
+                               Foreground="Gray"/>
+                </StackPanel>
+            </StackPanel>
+        </GroupBox>
 
-            <!-- Max Pages -->
-            <TextBlock Text="Liczba stron:" Grid.Row="2" Grid.Column="0"/>
-            <TextBox Text="{Binding MaxPages}" Grid.Row="2" Grid.Column="1"/>
-        </Grid>
+        <!-- 3. TABELA WYNIKÓW -->
+        <DataGrid Grid.Row="3" Margin="0,10" 
+                  ItemsSource="{Binding AnalysisResults}" 
+                  AutoGenerateColumns="False" 
+                  IsReadOnly="True"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="40"/>
+                <!-- Kolumna Tytuł - widoczna warunkowo z ElementName binding -->
+                <DataGridTextColumn Header="Tytuł / Nazwa" Binding="{Binding Title}" Width="*">
+                    <DataGridTextColumn.Visibility>
+                        <Binding Path="DataContext.ShowTitleColumn" 
+                                 ElementName="MainWindowRoot" 
+                                 Converter="{StaticResource BoolToVisConverter}"/>
+                    </DataGridTextColumn.Visibility>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Autor / Nazwa" Binding="{Binding Author}" Width="200"/>
+                <DataGridTextColumn Header="Wartość" Binding="{Binding Value}" Width="120" FontWeight="Bold"/>
+            </DataGrid.Columns>
+        </DataGrid>
 
-        <!-- 3. Logi -->
-        <TextBlock Text="Logi operacji:" Grid.Row="2" Margin="0,15,0,5" VerticalAlignment="Bottom"/>
-        <TextBox Grid.Row="2" 
-                 Text="{Binding Logs}" 
-                 IsReadOnly="True" 
-                 VerticalScrollBarVisibility="Auto" 
-                 AcceptsReturn="True" 
-                 TextWrapping="Wrap" 
-                 FontFamily="Consolas"
-                 Margin="0,30,0,0"/>
+        <!-- 4. RAPORT PDF -->
+        <GroupBox Header="Eksport" Grid.Row="4" Padding="10" Margin="0,0,0,10">
+            <Button Content="Generuj Raport PDF" Command="{Binding GenerateReportCommand}" 
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                    Padding="20,10" FontWeight="Bold" HorizontalAlignment="Left"/>
+        </GroupBox>
 
-        <!-- 4. Przycisk -->
-        <Button Grid.Row="3" 
-                Content="Uruchom Proces" 
-                Command="{Binding StartCommand}" 
-                Height="40" 
-                FontSize="14" 
-                FontWeight="Bold"/>
+        <!-- 5. LOGI -->
+        <GroupBox Header="Logi" Grid.Row="5">
+            <TextBox Text="{Binding Logs}" IsReadOnly="True" VerticalScrollBarVisibility="Auto" 
+                     TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+        </GroupBox>
     </Grid>
 </Window>

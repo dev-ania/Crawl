@@ -23,5 +23,6 @@ public sealed class CrawlerOptions
 
 public sealed class ReportOptions
 {
-    public string OutputPath { get; set; } = "report.pdf";
+    public string OutputPath { get; set; } = "raport.pdf";
+    public string AuthorName { get; set; }
 }

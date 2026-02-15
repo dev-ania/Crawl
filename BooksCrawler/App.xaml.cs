@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Windows;
+using System.Text;
 
 namespace BooksCrawler;
 
@@ -40,6 +41,8 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
         await _host.StartAsync();
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
@@ -47,6 +50,7 @@ public partial class App : Application
 
         base.OnStartup(e);
     }
+
 
     protected override async void OnExit(ExitEventArgs e)
     {

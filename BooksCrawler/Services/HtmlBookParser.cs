@@ -1,121 +1,183 @@
 using HtmlAgilityPack;
-using BooksCrawler.Domain;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using BooksCrawler.Models;
+using Microsoft.Extensions.Logging;
 
 namespace BooksCrawler.Services;
 
 public class HtmlBookParser
 {
-    public List<string> ExtractBookLinks(string html, string baseUrl)
+    private readonly ILogger<HtmlBookParser> _logger;
+
+    public HtmlBookParser(ILogger<HtmlBookParser> logger)
+    {
+        _logger = logger;
+    }
+
+    public List<Book> ParseBooksFromList(string html, string baseUrl)
+    {
+        var books = new List<Book>();
+        var seenUrls = new HashSet<string>();
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+
+        var nodes = doc.DocumentNode.SelectNodes("//a[contains(@class, 'ecommerce-datalayer')]");
+
+        if (nodes != null)
+        {
+            foreach (var node in nodes)
+            {
+                var href = node.GetAttributeValue("href", "");
+                if (string.IsNullOrWhiteSpace(href)) continue;
+
+                if (!href.StartsWith("http"))
+                    href = baseUrl.TrimEnd('/') + "/" + href.TrimStart('/');
+
+                if (seenUrls.Contains(href))
+                    continue;
+
+                seenUrls.Add(href);
+
+                var title = node.GetAttributeValue("data-name", "").Trim();
+                if (string.IsNullOrEmpty(title))
+                    title = node.InnerText.Trim();
+
+                decimal? price = null;
+                var priceText = node.GetAttributeValue("data-price", "").Replace(",", ".");
+                if (decimal.TryParse(priceText, NumberStyles.Any, CultureInfo.InvariantCulture, out var p))
+                    price = p;
+
+                // data-brand to wydawnictwo, nie autor
+                var publisher = node.GetAttributeValue("data-brand", "").Trim();
+
+                books.Add(new Book
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Title = title,
+                    Price = price,
+                    Url = href,
+                    // ZMIANA: Pusta lista zamiast "Nieznany Autor". 
+                    // Dzięki temu łatwiej odfiltrować braki w serwisie.
+                    Authors = new List<string>(),
+                    Publisher = !string.IsNullOrEmpty(publisher) ? publisher : null,
+                    Year = null
+                });
+            }
+        }
+        return books;
+    }
+
+    public void EnrichBookDetails(Book book, string html)
     {
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
 
-        var linkNodes = new HtmlNodeCollection(null);
+        var authorsList = new List<string>();
+        _logger.LogInformation("=== Przetwarzanie szczegółów dla: {Title} ===", book.Title);
 
-        // Strategia 1: Szukamy linków w tytułach produktów (najczęstszy wzorzec na TaniaKsiazka)
-        // Szukamy elementów <h3> które zawierają <a> z href
-        var nodes1 = doc.DocumentNode.SelectNodes("//h3/a[@href]");
-        if (nodes1 != null) foreach (var n in nodes1) linkNodes.Add(n);
-
-        // Strategia 2: Szukamy linków z klasą "product-title" (czasami używane w widoku listy)
-        var nodes2 = doc.DocumentNode.SelectNodes("//a[contains(@class, 'product-title')]");
-        if (nodes2 != null) foreach (var n in nodes2) linkNodes.Add(n);
-
-        // Strategia 3: Szukamy linków wewnątrz kontenera produktu (często div z klasą "product-..." lub "offer-...")
-        // To jest bardzo szeroki selektor, więc będziemy musieli mocno filtrować wyniki
-        var nodes3 = doc.DocumentNode.SelectNodes("//div[contains(@class, 'product')]//a[@href]");
-        if (nodes3 != null) foreach (var n in nodes3) linkNodes.Add(n);
-
-        if (linkNodes.Count == 0) return [];
-
-        var links = new List<string>();
-        var baseUri = new Uri(baseUrl);
-
-        foreach (var node in linkNodes)
+        // Metoda 1: Extract from div.product-info-author
+        var authorDiv = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'product-info-author')]");
+        if (authorDiv != null)
         {
-            var href = node.GetAttributeValue("href", "");
+            var authorText = authorDiv.InnerText.Trim();
+            authorText = System.Net.WebUtility.HtmlDecode(authorText);
+            authorText = Regex.Replace(authorText, @"\s+", " ");
+            authorText = Regex.Replace(authorText, @"^(autor|author)\s*:\s*", "", RegexOptions.IgnoreCase).Trim();
 
-            // Filtrowanie (Cleanup)
-            if (string.IsNullOrWhiteSpace(href)) continue;
+            var separators = new[] { ',', ';' };
+            var authors = authorText.Split(separators, StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(a => a.Trim())
+                                    .Where(a => !string.IsNullOrEmpty(a) && a.Length > 1)
+                                    .ToList();
 
-            // Ignorujemy linki do autorów, kategorii, javascript, koszyka itp.
-            if (href.Contains("javascript:")) continue;
-            if (href.Contains("/autor/")) continue;
-            if (href.Contains("/wydawnictwo/")) continue;
-            if (href.Contains("/serie/")) continue;
-            if (href.Contains("dodaj-do-schowka")) continue;
-            if (href.Contains("koszyk")) continue;
-
-            // Link do produktu na TaniaKsiazka zazwyczaj nie ma dziwnych prefiksów, 
-            // ale dla pewności sprawdźmy czy nie jest obrazkiem
-            if (href.EndsWith(".jpg") || href.EndsWith(".png")) continue;
-
-            // Budowanie pełnego URL
-            var absoluteUri = href.StartsWith("http") ? href : new Uri(baseUri, href).ToString();
-
-            // Dodatkowe zabezpieczenie: TaniaKsiazka.pl ma linki w formacie *-p-*.html lub *-p-*.htm 
-            // (gdzie 'p' oznacza produkt, a potem jest ID). Np. "tytul-ksiazki-p-12345.html"
-            // To najlepszy sposób na odróżnienie produktu od śmieci.
-            if (absoluteUri.Contains("-p-"))
+            if (authors.Any())
             {
-                links.Add(absoluteUri);
+                authorsList.AddRange(authors);
             }
         }
 
-        return links.Distinct().ToList();
+        // Metoda 2: Linki /autor/ (Fallback)
+        if (!authorsList.Any())
+        {
+            var authorLinks = doc.DocumentNode.SelectNodes("//a[contains(@href, '/autor/')]");
+            if (authorLinks != null)
+            {
+                foreach (var link in authorLinks)
+                {
+                    var authorName = link.InnerText.Trim();
+                    authorName = System.Net.WebUtility.HtmlDecode(authorName);
+                    authorName = Regex.Replace(authorName, @"\s+", " ");
+
+                    if (!string.IsNullOrEmpty(authorName) && !authorsList.Contains(authorName))
+                    {
+                        authorsList.Add(authorName);
+                    }
+                }
+            }
+        }
+
+        // Aktualizacja obiektu książki
+        if (authorsList.Any())
+        {
+            book.Authors = authorsList;
+            _logger.LogInformation("✓ Zaktualizowano autorów: {Authors}", string.Join(", ", authorsList));
+        }
+        else
+        {
+            _logger.LogWarning("✗ Nie znaleziono autorów dla: {Title}", book.Title);
+            // Nie ustawiamy "Nieznany Autor" - zostawiamy pustą listę, by crawler ją odrzucił
+        }
+
+        // Wydawnictwo i Rok (reszta bez zmian)
+        var rows = doc.DocumentNode.SelectNodes("//tr");
+        if (rows != null)
+        {
+            foreach (var row in rows)
+            {
+                var cells = row.SelectNodes("th|td");
+                if (cells != null && cells.Count >= 2)
+                {
+                    var label = cells[0].InnerText.Trim().ToLower();
+                    var value = cells[1].InnerText.Trim();
+
+                    if (label.Contains("wydawnictwo"))
+                    {
+                        if (string.IsNullOrEmpty(book.Publisher)) book.Publisher = value;
+                    }
+                    else if (label.Contains("rok wydania") || label.Contains("data wydania"))
+                    {
+                        var match = Regex.Match(value, @"\d{4}");
+                        if (match.Success && int.TryParse(match.Value, out var y)) book.Year = y;
+                    }
+                }
+            }
+        }
+
+        if (string.IsNullOrEmpty(book.Publisher))
+        {
+            var pubLink = doc.DocumentNode.SelectSingleNode("//a[contains(@href, '/wydawnictwo/')]");
+            if (pubLink != null) book.Publisher = pubLink.InnerText.Trim();
+        }
     }
-    public Book? ParseBookDetails(string html, string url)
+
+    public string? ParseNextPageLink(string html, string baseUrl)
     {
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
+        var nextNode = doc.DocumentNode.SelectSingleNode("//li[contains(@class, 'next')]/a")
+                       ?? doc.DocumentNode.SelectSingleNode("//a[contains(@class, 'next')]");
 
-        // Tytuł i Cena 
-        var titleNode = doc.DocumentNode.SelectSingleNode("//h1");
-        var priceNode = doc.DocumentNode.SelectSingleNode("//meta[@itemprop='price']");
-
-        if (titleNode == null) return null;
-
-        decimal? price = null;
-        if (priceNode != null)
+        if (nextNode != null)
         {
-            var priceText = priceNode.GetAttributeValue("content", "");
-            if (decimal.TryParse(priceText.Replace(",", "."), NumberStyles.Any, CultureInfo.InvariantCulture, out var p))
-                price = p;
+            var href = nextNode.GetAttributeValue("href", "");
+            if (!string.IsNullOrWhiteSpace(href) && !href.Contains("javascript"))
+            {
+                if (!href.StartsWith("http"))
+                    href = baseUrl.TrimEnd('/') + "/" + href.TrimStart('/');
+                return href;
+            }
         }
-
-        // Autorzy: Szukamy linków w sekcji autorów (często pod tytułem)
-        var authorNodes = doc.DocumentNode.SelectNodes("//a[contains(@href, '/autor/')]");
-        var authors = authorNodes?.Select(n => n.InnerText.Trim()).Distinct().ToList() ?? ["Nieznany Autor"];
-
-        // Wydawnictwo: Szukamy linku do wydawnictwa (często w tabeli szczegółów)
-        var publisherNode = doc.DocumentNode.SelectSingleNode("//a[contains(@href, '/wydawnictwo/')]");
-        var publisher = publisherNode?.InnerText.Trim();
-
-        // Rok wydania: Szukamy w tabeli szczegółów (często wiersz z "Data wydania:" lub "Rok wydania:")
-        // Na TaniaKsiazka.pl to często jest w liście <li>Data wydania: <span>2024</span></li>
-        int? year = null;
-        var yearNode = doc.DocumentNode.SelectSingleNode("//li[contains(., 'Data wydania')]//span")
-                       ?? doc.DocumentNode.SelectSingleNode("//li[contains(., 'Rok wydania')]//span");
-
-        if (yearNode != null)
-        {
-            // Wyciągamy rok z daty (np. 2024-05-12 -> 2024)
-            var yearText = Regex.Match(yearNode.InnerText, @"\d{4}").Value;
-            if (int.TryParse(yearText, out var y)) year = y;
-        }
-
-        return new Book
-        {
-            Id = url.GetHashCode().ToString(),
-            Title = titleNode.InnerText.Trim(),
-            Price = price,
-            Url = url,
-            Authors = authors,
-            Publisher = publisher, // <-- Nowe pole
-            Year = year           // <-- Nowe pole
-        };
+        return null;
     }
-
 }
