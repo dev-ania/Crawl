@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework> 
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+        <UserSecretsId>9509c4a7-c278-4d53-802c-f6109a92c711</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Core Logic -->
+        <PackageReference Include="HtmlAgilityPack" Version="1.11.72" />
+        <PackageReference Include="Neo4j.Driver" Version="5.28.3" />
+        <PackageReference Include="iTextSharp.LGPLv2.Core" Version="3.7.12" />
+
+        <!-- Microsoft Extensions (Wersje 10.0.0 dla .NET 10) -->
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" /> 
+        <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.0" /> 
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" /> 
+        <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" /> 
+
+        <!-- Logging -->
+        <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
+        <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="appsettings.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>

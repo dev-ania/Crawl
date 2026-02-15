@@ -1,0 +1,84 @@
+﻿<Window x:Class="BooksCrawler.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:BooksCrawler.ViewModels"
+        mc:Ignorable="d"
+        Title="Books Crawler - .NET 10" Height="450" Width="600"
+        WindowStartupLocation="CenterScreen">
+    
+    <!-- Prosty styl dla kontrolek -->
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Margin" Value="0,5"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="0,10"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Nagłówek -->
+            <RowDefinition Height="Auto"/> <!-- Formularz -->
+            <RowDefinition Height="*"/>    <!-- Logi -->
+            <RowDefinition Height="Auto"/> <!-- Przycisk -->
+        </Grid.RowDefinitions>
+
+        <!-- 1. Nagłówek -->
+        <TextBlock Text="Konfiguracja Crawlera" 
+                   FontSize="20" FontWeight="Bold" 
+                   Foreground="#333" Margin="0,0,0,15"/>
+
+        <!-- 2. Formularz -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Base URL (np. Helion) -->
+            <TextBlock Text="Księgarnia:" Grid.Row="0" Grid.Column="0"/>
+            <TextBox Text="https://helion.pl/search?qa=" IsReadOnly="True" Grid.Row="0" Grid.Column="1" Background="#F0F0F0"/>
+
+            <!-- Fraza (np. Python) -->
+            <TextBlock Text="Szukaj (Autor/Tytuł):" Grid.Row="1" Grid.Column="0"/>
+            <TextBox Text="{Binding SearchQuery}" Grid.Row="1" Grid.Column="1"/>
+
+            <!-- Max Pages -->
+            <TextBlock Text="Liczba stron:" Grid.Row="2" Grid.Column="0"/>
+            <TextBox Text="{Binding MaxPages}" Grid.Row="2" Grid.Column="1"/>
+        </Grid>
+
+        <!-- 3. Logi -->
+        <TextBlock Text="Logi operacji:" Grid.Row="2" Margin="0,15,0,5" VerticalAlignment="Bottom"/>
+        <TextBox Grid.Row="2" 
+                 Text="{Binding Logs}" 
+                 IsReadOnly="True" 
+                 VerticalScrollBarVisibility="Auto" 
+                 AcceptsReturn="True" 
+                 TextWrapping="Wrap" 
+                 FontFamily="Consolas"
+                 Margin="0,30,0,0"/>
+
+        <!-- 4. Przycisk -->
+        <Button Grid.Row="3" 
+                Content="Uruchom Proces" 
+                Command="{Binding StartCommand}" 
+                Height="40" 
+                FontSize="14" 
+                FontWeight="Bold"/>
+    </Grid>
+</Window>
