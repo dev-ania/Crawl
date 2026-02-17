@@ -1,0 +1,8 @@
+﻿<wpf:ResourceDictionary xml:space="preserve" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:s="clr-namespace:System;assembly=mscorlib" xmlns:ss="urn:shemas-jetbrains-com:settings-storage-xaml" xmlns:wpf="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+	<s:String x:Key="/Default/dotCover/Editor/HighlightingSourceSnapshotLocation/@EntryValue">C:\Users\Ania\AppData\Local\JetBrains\Rider2025.3\resharper-host\temp\Rider\vAny\CoverageData\_BooksCrawler.-1262647670\Snapshot\snapshot.utdcvr</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=0a5327f4_002D1173_002D467d_002Da057_002D38bb75f4784f/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from Solution" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Solution /&gt;&#xD;
+&lt;/SessionState&gt;</s:String>
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=0ea35689_002D0d1b_002D4cd8_002D865a_002D07dcbcf5a831/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" Name="DuplicateDetectorTests" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;Project Location="C:\Users\Ania\RiderProjects\BooksCrawler\BooksCrawler.Tests" Presentation="&amp;lt;BooksCrawler.Tests&amp;gt;" /&gt;&#xD;
+&lt;/SessionState&gt;</s:String></wpf:ResourceDictionary>
