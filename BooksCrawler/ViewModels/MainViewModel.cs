@@ -227,7 +227,7 @@ public partial class MainViewModel : ObservableObject
                     ["Pobrane rekordy"] = _lastCrawlStats.UniqueAdded.ToString(),
                     ["Odrzucone duplikaty"] = _lastCrawlStats.DuplicatesRejected.ToString(),
                     ["Przetworzone strony"] = _lastCrawlStats.PagesProcessed.ToString(),
-                    ["Odrzucone (brak autora)"] = _lastCrawlStats.MissingAuthorRejected.ToString() // <-- CHANGE THIS!
+                    ["Odrzucone (brak autora)"] = _lastCrawlStats.MissingAuthorRejected.ToString()
                 };
 
                 stats = crawlData.Concat(stats).ToDictionary(x => x.Key, x => x.Value);

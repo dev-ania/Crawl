@@ -96,7 +96,7 @@ public class BookCrawlerService
 
                     if (hasInvalidAuthor)
                     {
-                        stats.MissingAuthorRejected++; // <-- CHANGE THIS!
+                        stats.MissingAuthorRejected++;
                         logCallback?.Invoke($" Pominięto pozycję (brak autora): {book.Title}");
                         _logger.LogInformation(
                             "Odrzucono: '{Title}' - brak autora lub autor nieznany - pozycja nieksiążkowa.",
@@ -131,7 +131,7 @@ public class BookCrawlerService
 
         logCallback?.Invoke(
             $"Podsumowanie: znaleziono {stats.TotalFound} pozycji, dodano: {stats.UniqueAdded}, " +
-            $"odrzucono duplikaty: {stats.DuplicatesRejected}, odrzucono (brak autora): {stats.MissingAuthorRejected}"); // <-- CHANGE THIS!
+            $"odrzucono duplikaty: {stats.DuplicatesRejected}, odrzucono (brak autora): {stats.MissingAuthorRejected}");
 
         return (books, stats);
     }

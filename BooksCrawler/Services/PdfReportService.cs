@@ -81,7 +81,7 @@ public sealed class PdfReportService : IDisposable
             // Dopnij brakujący wpis z crawlStats (jeśli nie został dołożony wcześniej)
             if (crawlStats != null && !stats.ContainsKey("Odrzucone (brak autora)"))
             {
-                stats["Odrzucone (brak autora)"] = crawlStats.MissingAuthorRejected.ToString(); // <-- CHANGE THIS!
+                stats["Odrzucone (brak autora)"] = crawlStats.MissingAuthorRejected.ToString();
             }
 
             foreach (var kv in stats)
